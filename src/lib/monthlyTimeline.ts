@@ -117,6 +117,17 @@ export function computeVariacaoPercentual(atual: number, anterior: number): numb
   return ((atual - anterior) / anterior) * 100;
 }
 
+/** Sums a month's per-titular breakdown over a subset of titulares — used to
+ * scope "Visão geral" to one or more selected titulares without needing a
+ * separate reconstruction path (every MonthEntry already carries porTitular,
+ * whether it came from the sheet or was reconstructed). */
+export function sumPorTitulares(
+  porTitular: Record<string, number>,
+  titulares: string[]
+): number {
+  return titulares.reduce((sum, t) => sum + (porTitular[t] ?? 0), 0);
+}
+
 export function computeMediaMensal(entries: MonthEntry[]): number {
   if (entries.length === 0) return 0;
   return entries.reduce((sum, e) => sum + e.totalGeral, 0) / entries.length;

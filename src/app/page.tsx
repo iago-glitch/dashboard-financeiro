@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshButton } from "@/components/RefreshButton";
 import { StatTile } from "@/components/StatTile";
 import { MonthSelector } from "@/components/MonthSelector";
+import { TitularFilter } from "@/components/TitularFilter";
 import { IncomeSettingsPanel } from "@/components/IncomeSettingsPanel";
 import { MonthlyTrendChart } from "@/components/MonthlyTrendChart";
 import { BreakdownBarChart } from "@/components/BreakdownBarChart";
@@ -12,12 +13,13 @@ import { UpcomingEndings } from "@/components/UpcomingEndings";
 import { ComprasTable } from "@/components/ComprasTable";
 import { formatCurrency } from "@/lib/format";
 import { TITULAR_HEX, TIPO_HEX } from "@/lib/colors";
-import { useIncomeSettings } from "@/lib/incomeSettings";
+import { incomeForTitulares, useIncomeSettings } from "@/lib/incomeSettings";
 import {
   buildMonthlyTimeline,
   computeVariacaoPercentual,
   findCurrentMonthIndex,
   getTopExpenses,
+  sumPorTitulares,
 } from "@/lib/monthlyTimeline";
 import type { SheetData } from "@/lib/types";
 
@@ -26,6 +28,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [manualIndex, setManualIndex] = useState<number | null>(null);
+  const [manualTitulares, setManualTitulares] = useState<string[] | null>(null);
   const [lastData, setLastData] = useState<SheetData | null>(null);
 
   const load = useCallback(async () => {
@@ -52,13 +55,14 @@ export default function Home() {
 
   const timeline = useMemo(() => (data ? buildMonthlyTimeline(data) : []), [data]);
 
-  // Reset the month selection back to the current month whenever fresh data
-  // arrives (e.g. after clicking "Atualizar dados") — the React-recommended
-  // way to adjust state in response to a prop/derived-value change without
-  // doing it inside an effect.
+  // Reset the month and titular selections back to the defaults whenever
+  // fresh data arrives (e.g. after clicking "Atualizar dados") — the
+  // React-recommended way to adjust state in response to a prop/derived-value
+  // change without doing it inside an effect.
   if (data !== lastData) {
     setLastData(data);
     setManualIndex(null);
+    setManualTitulares(null);
   }
 
   const defaultIndex = timeline.length > 0 ? findCurrentMonthIndex(timeline) : -1;
@@ -66,16 +70,45 @@ export default function Home() {
   const selectedEntry = selectedIndex >= 0 ? (timeline[selectedIndex] ?? null) : null;
   const previousEntry = selectedIndex > 0 ? timeline[selectedIndex - 1] : null;
 
+  const allTitulares = data?.titulares ?? [];
+  const selectedTitulares = manualTitulares ?? allTitulares;
+  const isAllTitularesSelected =
+    allTitulares.length > 0 && selectedTitulares.length === allTitulares.length;
+
+  const despesasDoMes = selectedEntry ? sumPorTitulares(selectedEntry.porTitular, selectedTitulares) : 0;
+  const despesasMesAnterior = previousEntry
+    ? sumPorTitulares(previousEntry.porTitular, selectedTitulares)
+    : 0;
   const variacao = selectedEntry && previousEntry
-    ? computeVariacaoPercentual(selectedEntry.totalGeral, previousEntry.totalGeral)
+    ? computeVariacaoPercentual(despesasDoMes, despesasMesAnterior)
     : null;
 
   const [income] = useIncomeSettings();
-  const rendaFamiliar = income.iago + income.esposa;
-  const despesasDoMes = selectedEntry?.totalGeral ?? 0;
-  const rendaConfigurada = rendaFamiliar > 0;
-  const percentualComprometido = rendaConfigurada ? (despesasDoMes / rendaFamiliar) * 100 : null;
-  const disponivelAposDespesas = rendaConfigurada ? rendaFamiliar - despesasDoMes : null;
+  const rendaSelecionada = incomeForTitulares(income, selectedTitulares);
+  const rendaConfigurada = rendaSelecionada > 0;
+  const percentualComprometido = rendaConfigurada ? (despesasDoMes / rendaSelecionada) * 100 : null;
+  const disponivelAposDespesas = rendaConfigurada ? rendaSelecionada - despesasDoMes : null;
+
+  const titularesComRenda = selectedTitulares.filter((t) => t === "Iago" || t === "Esposa");
+  const titularesSemRenda = selectedTitulares.filter((t) => t !== "Iago" && t !== "Esposa");
+  const rendaLabel = isAllTitularesSelected ? "Renda familiar" : "Renda selecionada";
+  const rendaHint =
+    titularesComRenda.length > 0
+      ? titularesComRenda.join(" + ") +
+        (titularesSemRenda.length > 0 ? ` (sem renda: ${titularesSemRenda.join(", ")})` : "")
+      : titularesSemRenda.length > 0
+        ? `sem renda cadastrada para ${titularesSemRenda.join(", ")}`
+        : "nenhum titular selecionado";
+
+  const lancamentosFiltrados = data
+    ? data.compras.filter((c) => selectedTitulares.includes(c.titular))
+    : [];
+  const lancamentosAtivos = lancamentosFiltrados.filter(
+    (c) => c.status === "Em andamento" || c.status === "Ativa"
+  ).length;
+  const assinaturasAtivas = lancamentosFiltrados.filter(
+    (c) => c.tipoCompra === "Assinatura"
+  ).length;
 
   const topExpenses = useMemo(
     () => (data && selectedEntry ? getTopExpenses(data.compras, selectedEntry.date, 10) : []),
@@ -132,14 +165,21 @@ export default function Home() {
               <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
                 Visão geral
               </h2>
-              <MonthSelector
-                timeline={timeline}
-                selectedIndex={selectedIndex}
-                onChange={setManualIndex}
-              />
+              <div className="flex items-center gap-2">
+                <TitularFilter
+                  allTitulares={allTitulares}
+                  selected={selectedTitulares}
+                  onChange={setManualTitulares}
+                />
+                <MonthSelector
+                  timeline={timeline}
+                  selectedIndex={selectedIndex}
+                  onChange={setManualIndex}
+                />
+              </div>
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatTile label="Renda familiar" value={formatCurrency(rendaFamiliar)} hint="Iago + Esposa" />
+              <StatTile label={rendaLabel} value={formatCurrency(rendaSelecionada)} hint={rendaHint} />
               <StatTile label="Despesas do mês" value={formatCurrency(despesasDoMes)} hint={selectedEntry.mes} />
               <StatTile
                 label="% da renda comprometida"
@@ -176,16 +216,8 @@ export default function Home() {
                 muted={variacao === null}
                 hint={variacao === null ? "sem mês anterior para comparar" : undefined}
               />
-              <StatTile
-                label="Lançamentos ativos"
-                value={String(
-                  data.compras.filter((c) => c.status === "Em andamento" || c.status === "Ativa").length
-                )}
-              />
-              <StatTile
-                label="Assinaturas ativas"
-                value={String(data.compras.filter((c) => c.tipoCompra === "Assinatura").length)}
-              />
+              <StatTile label="Lançamentos ativos" value={String(lancamentosAtivos)} />
+              <StatTile label="Assinaturas ativas" value={String(assinaturasAtivas)} />
             </div>
           </section>
 

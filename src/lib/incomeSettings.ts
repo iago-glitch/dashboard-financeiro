@@ -75,3 +75,14 @@ export function useIncomeSettings(): [IncomeSettings, (next: IncomeSettings) => 
 
   return [settings, setSettings];
 }
+
+/** Only "Iago" and "Esposa" have a tracked income field — any other titular
+ * (e.g. someone else who also appears in "Compras Parceladas") contributes 0
+ * because there is no cadastro for them, not because their income is zero. */
+export function incomeForTitulares(income: IncomeSettings, titulares: string[]): number {
+  return titulares.reduce((sum, t) => {
+    if (t === "Iago") return sum + income.iago;
+    if (t === "Esposa") return sum + income.esposa;
+    return sum;
+  }, 0);
+}
