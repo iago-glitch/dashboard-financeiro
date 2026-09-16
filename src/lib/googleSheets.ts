@@ -6,8 +6,8 @@ const SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
 const COMPRAS_SHEET = "Compras Parceladas";
 const RESUMO_SHEET = "Resumo Mensal";
 
-const TITULARES = ["Iago", "Esposa", "Cícero", "Sandra", "Alessandra"];
-const TIPOS: TipoCompra[] = ["Parcelado", "À vista", "Assinatura", "Combustível"];
+export const TITULARES = ["Iago", "Esposa", "Cícero", "Sandra", "Alessandra"];
+export const TIPOS: TipoCompra[] = ["Parcelado", "À vista", "Assinatura", "Combustível"];
 
 async function fetchRange(
   spreadsheetId: string,
